@@ -288,6 +288,33 @@ textarea{min-height:88px}
   .card{padding:12px 10px}
 }
 
+
+/* ===== 21px 기본 글꼴 + 음성 UI ===== */
+body{font-size:21px}
+.hero p{font-size:18px}
+.g{font-size:17px}
+.card h2{font-size:25px}
+.card p.desc{font-size:17px}
+label{font-size:18px}
+input,select,textarea{font-size:21px !important}
+.chip{font-size:18px;min-height:46px}
+.foodGroup>b{font-size:18px}
+.sectionTitle{font-size:20px}
+.help{font-size:15px}
+.summary{font-size:17px}
+.recipeHead h3{font-size:26px}
+.recipeMeta{font-size:16px}
+.chefWhy,.beginnerBox,.stepAction,.stepCue,.stepWarn,.finishSignal,.tasteTips,.rescueTips,.shopMini,.ingTable{font-size:17px}
+.footerNote{font-size:15px}
+.ttsTools{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}
+.ttsBtn{border:0;border-radius:12px;background:#d88764;color:#fff;padding:10px 14px;font-weight:900;font-size:17px;cursor:pointer}
+.ttsBtn.secondary{background:#eef3f6;color:#3f6376}
+.ttsStatus{font-size:15px;color:#647784;margin-top:6px;line-height:1.5}
+.ttsSettings{background:#fff8f2;border:1px solid #ead8cb;border-radius:12px;padding:10px 11px;margin-top:10px}
+.ttsSettings summary{cursor:pointer;font-weight:900;font-size:17px}
+.ttsSettings input{margin-top:6px}
+@media(max-width:390px){body{font-size:20px}.chip{font-size:17px}}
+
 </style>
 </head>
 <body>
@@ -307,7 +334,7 @@ textarea{min-height:88px}
     <p class="desc">GitHub에 올린 뒤 링크만 보내면 됩니다. 원하시면 휴대폰 바탕화면에도 앱처럼 추가할 수 있습니다.</p>
     <div class="beginnerBox" style="margin:0 0 10px">
       <b>카톡 링크 미리보기</b><br>
-      이 페이지와 함께 <b>mijin.png</b>를 같은 폴더에 올리시고, HTML 상단의 <b>YOUR-GITHUB-PAGES-URL</b> 부분만 실제 주소로 바꾸면 됩니다.
+      이 페이지와 함께 <b>mijin.png</b>를 같은 폴더에 올리시고, 카톡 미리보기는 <b>https://jeon-seungdae.github.io/home/mijin.png</b>를 사용하도록 설정되어 있습니다.
     </div>
     <button class="btn light" id="installBtn" style="width:100%;min-height:46px;display:none;margin-bottom:8px">홈 화면에 추가</button>
     <details class="foodGroup" style="background:#fff">
@@ -324,6 +351,24 @@ textarea{min-height:88px}
     </details>
     <div class="help" style="margin-top:10px">이 페이지에는 이미 바탕화면용 아이콘(앱 아이콘)과 설치용 설정이 들어 있습니다.</div>
   </section>
+
+<section class="card" id="ttsCard">
+  <h2>🔊 음성으로 조리법 듣기</h2>
+  <p class="desc">Azure 한국어 여성 음성 <b>선희(SunHi)</b>가 조리법을 읽어 줍니다.</p>
+  <details class="ttsSettings">
+    <summary>처음 한 번만 음성 설정</summary>
+    <label>Azure Speech Key</label>
+    <input id="azureTtsKey" type="password" placeholder="Azure Speech Key">
+    <label>Azure Region</label>
+    <input id="azureTtsRegion" type="text" value="eastus" placeholder="예: eastus">
+    <div class="ttsTools">
+      <button class="ttsBtn secondary" type="button" id="saveTtsSettings">설정 저장</button>
+      <button class="ttsBtn secondary" type="button" id="testTtsBtn">선희 음성 테스트</button>
+    </div>
+    <div class="ttsStatus" id="ttsStatus">키는 이 휴대폰 브라우저에만 저장되고 HTML 파일에는 들어가지 않습니다.</div>
+  </details>
+</section>
+
 
 
   <section class="card">
@@ -888,6 +933,10 @@ function renderRecipe(r, idx){
         <span class="rank">추천 ${idx+1}</span>
         <h3>${esc(r.name)}</h3>
         <div class="recipeMeta">약 ${r.mins}분 · ${r.diff} · ${esc(document.getElementById('people').value)}</div>
+      <div class="ttsTools">
+        <button class="ttsBtn" type="button" onclick="speakRecipe(this)">🔊 이 조리법 듣기</button>
+        <button class="ttsBtn secondary" type="button" onclick="stopRecipeSpeech()">■ 음성 정지</button>
+      </div>
       </div>
     </div>
 
@@ -971,6 +1020,88 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(()=>{});
   });
 }
+
+
+/* ===== Azure TTS · ko-KR-SunHiNeural ===== */
+let currentTtsAudio=null;
+function azureSettings(){
+  return {
+    key:localStorage.getItem('mijin_azure_key')||'',
+    region:localStorage.getItem('mijin_azure_region')||'eastus',
+    voice:'ko-KR-SunHiNeural'
+  };
+}
+function saveAzureSettings(){
+  const k=(document.getElementById('azureTtsKey')?.value||'').trim();
+  const r=(document.getElementById('azureTtsRegion')?.value||'eastus').trim()||'eastus';
+  if(k)localStorage.setItem('mijin_azure_key',k);
+  localStorage.setItem('mijin_azure_region',r);
+  const s=document.getElementById('ttsStatus');
+  if(s)s.textContent=k?'✓ 이 휴대폰에 음성 설정을 저장했습니다.':'Azure Speech Key도 입력해 주세요.';
+}
+function xmlEsc(s){
+  return String(s||'').replace(/[<>&'"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c]));
+}
+async function azureSpeak(text){
+  const cfg=azureSettings();
+  if(!cfg.key){
+    const d=document.querySelector('.ttsSettings'); if(d)d.open=true;
+    document.getElementById('azureTtsKey')?.focus();
+    throw new Error('처음 한 번 Azure Speech Key를 입력하고 「설정 저장」을 눌러 주세요.');
+  }
+  stopRecipeSpeech();
+  const endpoint=`https://${cfg.region}.tts.speech.microsoft.com/cognitiveservices/v1`;
+  const ssml=`<speak version="1.0" xml:lang="ko-KR"><voice name="${cfg.voice}"><prosody rate="-3%">${xmlEsc(text)}</prosody></voice></speak>`;
+  const res=await fetch(endpoint,{method:'POST',headers:{
+    'Ocp-Apim-Subscription-Key':cfg.key,
+    'Content-Type':'application/ssml+xml',
+    'X-Microsoft-OutputFormat':'audio-24khz-48kbitrate-mono-mp3'
+  },body:ssml});
+  if(!res.ok)throw new Error(`Azure 음성 오류 (${res.status}). Key와 Region을 확인해 주세요.`);
+  const blob=await res.blob(), url=URL.createObjectURL(blob);
+  currentTtsAudio=new Audio(url);
+  currentTtsAudio.onended=()=>{URL.revokeObjectURL(url);currentTtsAudio=null};
+  await currentTtsAudio.play();
+}
+function stopRecipeSpeech(){
+  if(currentTtsAudio){
+    try{currentTtsAudio.pause();currentTtsAudio.currentTime=0}catch(_){}
+    currentTtsAudio=null;
+  }
+}
+function recipeSpeakText(article){
+  if(!article)return '';
+  const clone=article.cloneNode(true);
+  clone.querySelectorAll('button,.ttsTools').forEach(x=>x.remove());
+  return (clone.innerText||'').replace(/추천\s*\d+/g,'').replace(/\n{3,}/g,'\n\n').trim();
+}
+async function speakRecipe(btn){
+  const st=document.getElementById('ttsStatus');
+  try{
+    if(st)st.textContent='선희 음성으로 조리법을 준비하고 있습니다...';
+    await azureSpeak(recipeSpeakText(btn.closest('.recipeCard')));
+    if(st)st.textContent='▶ 조리법을 읽고 있습니다.';
+  }catch(e){
+    if(st)st.textContent=e.message||String(e);
+    else alert(e.message||String(e));
+  }
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  const cfg=azureSettings();
+  const k=document.getElementById('azureTtsKey'), r=document.getElementById('azureTtsRegion');
+  if(k&&cfg.key)k.value=cfg.key;
+  if(r)r.value=cfg.region;
+  document.getElementById('saveTtsSettings')?.addEventListener('click',saveAzureSettings);
+  document.getElementById('testTtsBtn')?.addEventListener('click',async()=>{
+    const st=document.getElementById('ttsStatus');
+    try{
+      saveAzureSettings();
+      if(st)st.textContent='선희 음성을 테스트하고 있습니다...';
+      await azureSpeak('안녕하세요. 미진이 요리 도우미입니다. 오늘도 맛있는 요리를 함께 만들어 보겠습니다.');
+      if(st)st.textContent='✓ 선희 음성이 정상적으로 재생되었습니다.';
+    }catch(e){if(st)st.textContent=e.message||String(e)}
+  });
+});
 
 </script>
 </body>
