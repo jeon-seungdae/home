@@ -15,14 +15,14 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="미진이 요리 도우미">
 <meta property="og:description" content="냉장고 재료와 오늘 상황에 맞춰 맛있게 만들 수 있도록 자상하게 알려주는 모바일 요리 도우미">
-<meta property="og:image" content="https://jeon-seungdae.github.io/home/mijin.png">
-<meta property="og:url" content="https://jeon-seungdae.github.io/home/">
+<meta property="og:image" content="https://YOUR-GITHUB-PAGES-URL/mijin.png">
+<meta property="og:url" content="https://YOUR-GITHUB-PAGES-URL/">
 <meta property="og:site_name" content="미진이 요리 도우미">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="미진이 요리 도우미">
 <meta name="twitter:description" content="모바일에서 쉽게 보는 자상한 요리 도우미">
-<meta name="twitter:image" content="https://jeon-seungdae.github.io/home/mijin.png">
+<meta name="twitter:image" content="https://YOUR-GITHUB-PAGES-URL/mijin.png">
 
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -286,6 +286,48 @@ textarea{min-height:88px}
   .hero h1{font-size:23px}
   .chip{font-size:13px;padding:8px 11px}
   .card{padding:12px 10px}
+}
+
+/* ===== 가독성 강화 + 음성 안내 ===== */
+body{font-size:18px;line-height:1.7}
+.hero h1{font-size:31px}
+.hero p{font-size:18px;line-height:1.65}
+.g{font-size:17px;padding:11px 12px}
+.card h2{font-size:24px}
+.card p.desc{font-size:17px;line-height:1.65}
+label{font-size:17px}
+.chip{font-size:16px;min-height:44px}
+.foodGroup>b{font-size:17px}
+.help,.footerNote{font-size:15px;line-height:1.65}
+.recipeHead h3{font-size:26px}
+.recipeMeta{font-size:16px}
+.rank{font-size:14px}
+.chefWhy,.beginnerBox{font-size:17px;line-height:1.7}
+.recipeCols h4,.sectionTitle{font-size:20px}
+.ingTable{font-size:17px}
+.ingTable td{padding:9px 5px}
+.shopMini{font-size:16px;line-height:1.65}
+.prepList{font-size:16px;line-height:1.75}
+.measureGuide span{font-size:15px}
+.cookStep{grid-template-columns:38px 1fr;gap:10px;margin-bottom:14px}
+.stepNo{width:34px;height:34px;font-size:17px}
+.stepAction{font-size:18px;line-height:1.75}
+.stepCue,.stepWarn,.finishSignal,.tasteTips,.rescueTips{font-size:16px;line-height:1.7}
+.summary{font-size:16px;line-height:1.7}
+.btn.primary{font-size:20px;min-height:58px}
+.voiceBtn{
+  margin-top:9px;border:1px solid #d9c8bc;background:#fff7f1;color:#6d4635;
+  border-radius:999px;padding:9px 14px;font-size:16px;font-weight:800;cursor:pointer;
+}
+.voiceBtn.playing{background:#d88764;color:#fff;border-color:#d88764}
+.voiceHint{font-size:14px;color:#6f777b;margin:5px 0 10px}
+@media(max-width:390px){
+  body{font-size:17px}
+  .hero h1{font-size:28px}
+  .hero p{font-size:17px}
+  .card h2{font-size:22px}
+  .stepAction{font-size:17px}
+  .stepCue,.stepWarn,.finishSignal,.tasteTips,.rescueTips{font-size:15px}
 }
 
 </style>
@@ -870,17 +912,23 @@ function renderRecipe(r, idx){
   const shop=shoppingList(r);
   const prep=prepFor(r);
   const ingRows=r.ingredients.map(([n,q,u])=>`<tr><td>${esc(n)}</td><td>${scaleQty(q,factor)}${esc(u)}</td></tr>`).join('');
-  const steps=r.steps.map((s,i)=>`
+  const steps=r.steps.map((s,i)=>{
+    const cue=cueFor(s[1]);
+    const warn=warnFor(s[1],s[0]);
+    const spoken=`${i+1}단계. ${s[0]}. ${s[1]}. 다음 단계로 넘어가는 신호. ${cue}. 초보자 주의. ${warn}`;
+    return `
     <div class="cookStep">
       <div class="stepNo">${i+1}</div>
       <div style="width:100%">
         <div class="stepDetail">
           <div class="stepAction"><b>🔥 ${esc(s[0])}</b><br>${esc(s[1])}</div>
-          <div class="stepCue"><b>👀 다음 단계로 넘어가는 신호</b><br>${esc(cueFor(s[1]))}</div>
-          <div class="stepWarn"><b>⚠ 초보자 주의</b><br>${esc(warnFor(s[1],s[0]))}</div>
+          <button class="voiceBtn" type="button" data-speak="${esc(spoken)}" onclick="speakFromButton(this)">🔊 이 단계 듣기</button>
+          <div class="stepCue"><b>👀 다음 단계로 넘어가는 신호</b><br>${esc(cue)}</div>
+          <div class="stepWarn"><b>⚠ 초보자 주의</b><br>${esc(warn)}</div>
         </div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
   return `
   <article class="recipeCard">
     <div class="recipeHead">
@@ -919,6 +967,7 @@ function renderRecipe(r, idx){
       </div>
       <div>
         <h4>아주 자상한 조리 순서</h4>
+        <div class="voiceHint">손이 바쁠 때는 각 단계의 🔊 버튼을 눌러 하나씩 들으세요.</div>
         ${steps}
         <div class="finishSignal"><b>✅ 완성되었는지 확인하는 법</b><br>${esc(finishFor(r))}</div>
       </div>
@@ -931,7 +980,59 @@ function renderRecipe(r, idx){
   </article>`;
 }
 
+
+let currentSpeechBtn = null;
+function stopSpeech(){
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  if(currentSpeechBtn){
+    currentSpeechBtn.classList.remove('playing');
+    currentSpeechBtn.textContent='🔊 이 단계 듣기';
+    currentSpeechBtn=null;
+  }
+}
+function speakFromButton(btn){
+  if(!('speechSynthesis' in window)){
+    alert('이 휴대폰 브라우저에서는 음성 읽기를 지원하지 않습니다.');
+    return;
+  }
+  if(currentSpeechBtn===btn && window.speechSynthesis.speaking){
+    stopSpeech();
+    return;
+  }
+  stopSpeech();
+  const text=btn.getAttribute('data-speak')||'';
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='ko-KR';
+  u.rate=0.88;
+  u.pitch=1.0;
+  u.volume=1.0;
+  const voices=window.speechSynthesis.getVoices();
+  // Microsoft/Azure 계열 '선희(SunHi)' 음성이 브라우저에 노출되어 있으면 최우선 사용
+  const sunhi=voices.find(v=>{
+    const name=String(v.name||'').toLowerCase();
+    const lang=String(v.lang||'').toLowerCase();
+    return lang.startsWith('ko') && (name.includes('sunhi') || name.includes('선희'));
+  });
+  const msKoreanFemale=voices.find(v=>{
+    const name=String(v.name||'').toLowerCase();
+    const lang=String(v.lang||'').toLowerCase();
+    return lang.startsWith('ko') && name.includes('microsoft') && (name.includes('female') || name.includes('sunhi'));
+  });
+  const ko=voices.find(v=>String(v.lang||'').toLowerCase().startsWith('ko'));
+  if(sunhi) u.voice=sunhi;
+  else if(msKoreanFemale) u.voice=msKoreanFemale;
+  else if(ko) u.voice=ko;
+  currentSpeechBtn=btn;
+  btn.classList.add('playing');
+  btn.textContent='⏹ 읽기 멈추기';
+  u.onend=()=>stopSpeech();
+  u.onerror=()=>stopSpeech();
+  window.speechSynthesis.speak(u);
+}
+window.addEventListener('beforeunload', stopSpeech);
+
 document.getElementById('recommendBtn').onclick=()=>{
+  stopSpeech();
   const ranked=R.map(r=>({r,...scoreRecipe(r)})).sort((a,b)=>b.score-a.score);
   const top=ranked.slice(0,3).map(x=>x.r);
   const ing=ingredientText();
