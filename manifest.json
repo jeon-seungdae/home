@@ -1,0 +1,24 @@
+{
+  "name": "미진이 요리 도우미",
+  "short_name": "미진이 요리",
+  "description": "냉장고 재료와 오늘 상황에 맞춰 맛있는 요리를 자상하게 알려주는 모바일 요리 도우미",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fbfaf7",
+  "theme_color": "#d88764",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
