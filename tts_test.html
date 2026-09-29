@@ -26,6 +26,10 @@ button.stop{background:#f3e6e2;color:var(--warn)}
 .result{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--accent2);min-height:52px}
 .result b{font-size:24px}
 .err{background:#f8e7e3;color:var(--warn)}
+.kara{position:relative;margin-top:12px;padding:14px;border:1px solid var(--line);border-radius:10px;max-height:340px;overflow:auto;background:#fff;line-height:2}
+.kara span{padding:3px 4px;border-radius:6px;transition:background .15s}
+.kara span.now{background:#ffe27a;font-weight:700}
+.kara span.done{color:#8a9797}
 small{color:var(--sub);font-size:18px}
 </style>
 </head>
@@ -53,6 +57,7 @@ small{color:var(--sub);font-size:18px}
       <button class="stop" id="stop">■ 정지</button>
     </div>
     <div class="result" id="out">버튼을 눌러 시작하세요.</div>
+    <div class="kara" id="kara" hidden></div>
   </section>
 
   <small>이 파일은 index.html과 별개의 시험용입니다. 같은 사이트에 올리면 위에서 저장한 Key와 Region을 기존 앱과 함께 씁니다.</small>
@@ -167,6 +172,24 @@ function stopAll(){
   if(pendingRes){const r=pendingRes;pendingRes=null;r()}
 }
 
+
+/* 읽는 문장 하이라이트 (카라오케) */
+function buildKara(chunks){
+  const k=$('kara'); k.innerHTML=''; k.hidden=false; k.scrollTop=0;
+  chunks.forEach((c,i)=>{
+    const sp=document.createElement('span'); sp.textContent=c; sp.dataset.i=i;
+    k.appendChild(sp); k.appendChild(document.createTextNode(' '));
+  });
+}
+function markKara(now){
+  const k=$('kara'); if(k.hidden)return;
+  k.querySelectorAll('span').forEach(sp=>{
+    const i=+sp.dataset.i;
+    sp.className=(now<0||i<now)?'done':(i===now?'now':'');
+    if(i===now)k.scrollTo({top:Math.max(0,sp.offsetTop-k.clientHeight/2+sp.offsetHeight/2),behavior:'smooth'});
+  });
+}
+
 async function speakFast(){
   stopAll(); unlock();
   const my=++run; ctrl=new AbortController(); const sig=ctrl.signal;
@@ -174,6 +197,7 @@ async function speakFast(){
   let chunks;
   try{settings();chunks=splitText($('text').value)}catch(e){show(e.message,true);return}
   if(!chunks.length){show('읽을 글을 입력해 주세요.',true);return}
+  buildKara(chunks);
   show('첫 문장을 준비하는 중...');
   const jobs=[];
   const start=i=>{if(i<chunks.length&&!jobs[i]){jobs[i]=synth(chunks[i],sig);jobs[i].catch(()=>{})}};
@@ -189,11 +213,12 @@ async function speakFast(){
     start(i+2);
     await playUrl(url,()=>{
       if(i===0)first=((performance.now()-t0)/1000).toFixed(1);
-      if(my===run)show(`<b>첫 소리까지 ${first}초</b><br>▶ ${i+1} / ${chunks.length} 문장 재생 중`);
+      if(my===run){markKara(i);show(`<b>첫 소리까지 ${first}초</b><br>▶ ${i+1} / ${chunks.length} 문장 재생 중`)}
     });
     URL.revokeObjectURL(url);
     if(my!==run)return;
   }
+  markKara(-1);
   show(`<b>첫 소리까지 ${first}초</b><br>✓ ${chunks.length}문장을 모두 읽었습니다.`);
 }
 
@@ -204,6 +229,7 @@ async function speakWhole(){
   let text;
   try{settings();text=$('text').value.trim()}catch(e){show(e.message,true);return}
   if(!text){show('읽을 글을 입력해 주세요.',true);return}
+  $('kara').hidden=true;
   show('전체 음성을 만드는 중... (예전 방식)');
   let url;
   try{url=await synth(text,ctrl.signal)}catch(e){
