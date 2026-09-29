@@ -312,6 +312,12 @@ input,select,textarea{font-size:21px !important}
 .ttsSettings summary{cursor:pointer;font-weight:900}
 .ttsSettings input{margin-top:6px}
 
+
+.floatTts{display:none;position:fixed;left:0;right:0;bottom:0;z-index:50;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:rgba(255,255,255,.96);border-top:1px solid #e7e1d7;box-shadow:0 -6px 18px rgba(82,68,54,.12);justify-content:center}
+.floatTts button{flex:1;max-width:260px;min-height:54px;border:0;border-radius:14px;font-size:21px;font-weight:900;cursor:pointer;background:#d88764;color:#fff}
+.floatTts button.stop{background:#eef3f6;color:#3f6376;flex:.7}
+.toast{position:fixed;left:12px;right:12px;bottom:88px;z-index:60;background:#333;color:#fff;border-radius:12px;padding:12px 14px;font-size:19px;line-height:1.5;display:none;text-align:center}
+.wrap{padding-bottom:150px !important}
 </style>
 </head>
 <body>
@@ -504,9 +510,16 @@ input,select,textarea{font-size:21px !important}
     <h2>추천 결과 · 초보자용 상세 조리법</h2>
     <div class="summary" id="summary"></div>
     <div class="menuGrid" id="menus"></div>
-    <p class="footerNote">※ 재료의 크기와 화력은 가정마다 조금씩 다릅니다. 마지막 간은 한 번에 많이 넣지 말고 조금씩 맛을 보며 맞추는 것이 가장 안전합니다.</p>
+    <p class="footerNote">※ 화면 버전: 글꼴 21px · 선희 음성 (2026-09-29)<br>※ 재료의 크기와 화력은 가정마다 조금씩 다릅니다. 마지막 간은 한 번에 많이 넣지 말고 조금씩 맛을 보며 맞추는 것이 가장 안전합니다.</p>
   </section>
 </div>
+
+
+<div class="floatTts" id="floatTts">
+  <button type="button" onclick="speakFloating()">🔊 조리법 듣기</button>
+  <button type="button" class="stop" onclick="stopRecipeSpeech();toast('음성을 멈췄습니다.')">■ 정지</button>
+</div>
+<div class="toast" id="toast"></div>
 
 <script>
 document.querySelectorAll('.chips').forEach(box=>{
@@ -992,6 +1005,7 @@ document.getElementById('recommendBtn').onclick=()=>{
   document.getElementById('menus').innerHTML=top.map(renderRecipe).join('');
   const result=document.getElementById('result');
   result.classList.add('on');
+  document.getElementById('floatTts').style.display='flex';
   result.scrollIntoView({behavior:'smooth',block:'start'});
 };
 
@@ -1012,11 +1026,23 @@ if (installBtn) {
     installBtn.style.display = 'none';
   });
 }
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
-  });
-}
+/* 옛 화면(캐시)이 계속 뜨는 문제 방지: 서비스워커·캐시를 한 번 지우고 새로고침 */
+(async function(){
+  try{
+    const VER='v21-sunhi-1';
+    if(localStorage.getItem('mijin_clean')===VER)return;
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+    if(window.caches){
+      const keys=await caches.keys();
+      await Promise.all(keys.map(k=>caches.delete(k)));
+    }
+    localStorage.setItem('mijin_clean',VER);
+    location.reload();
+  }catch(e){}
+})();
 
 
 /* ===== Azure TTS · ko-KR-SunHiNeural ===== */
@@ -1043,6 +1069,7 @@ async function azureSpeak(text){
   const cfg=azureSettings();
   if(!cfg.key){
     const d=document.querySelector('.ttsSettings'); if(d)d.open=true;
+    document.getElementById('ttsCard')?.scrollIntoView({behavior:'smooth',block:'start'});
     document.getElementById('azureTtsKey')?.focus();
     throw new Error('처음 한 번 Azure Speech Key를 입력하고 「설정 저장」을 눌러 주세요.');
   }
@@ -1078,10 +1105,29 @@ async function speakRecipe(btn){
     if(st)st.textContent='선희 음성으로 조리법을 준비하고 있습니다...';
     await azureSpeak(recipeSpeakText(btn.closest('.recipeCard')));
     if(st)st.textContent='▶ 조리법을 읽고 있습니다.';
+    toast('▶ 조리법을 읽고 있습니다.');
   }catch(e){
     if(st)st.textContent=e.message||String(e);
-    else alert(e.message||String(e));
+    toast(e.message||String(e));
   }
+}
+let toastTimer=null;
+function toast(msg){
+  const t=document.getElementById('toast'); if(!t)return;
+  t.textContent=msg; t.style.display='block';
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>{t.style.display='none'},4000);
+}
+function visibleRecipeCard(){
+  const cards=[...document.querySelectorAll('.recipeCard')];
+  let best=null,bs=0; const vh=window.innerHeight;
+  cards.forEach(c=>{const r=c.getBoundingClientRect();const v=Math.max(0,Math.min(r.bottom,vh)-Math.max(r.top,0));if(v>bs){bs=v;best=c}});
+  return best||cards[0];
+}
+function speakFloating(){
+  const c=visibleRecipeCard();
+  if(!c){toast('먼저 메뉴를 추천받아 주세요.');return}
+  toast('선희 음성으로 준비하고 있습니다...');
+  speakRecipe({closest:()=>c});
 }
 document.addEventListener('DOMContentLoaded',()=>{
   const cfg=azureSettings();
