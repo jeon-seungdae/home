@@ -4,6 +4,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>선희 음성 속도 테스트</title>
+<script>
+/* 앱 안 브라우저(카카오톡·네이버 등)에서 열리면 크롬으로 다시 연다 */
+(function(){
+  try{
+    var ua=navigator.userAgent.toLowerCase();
+    var inApp=/kakaotalk|naver\(inapp|instagram|fban|fbav|fbios|daumapps|\bline\//.test(ua);
+    if(!inApp)return;
+    if(location.search.indexOf('nochrome=1')>-1)return;      /* 크롬이 없어서 되돌아온 경우 반복 방지 */
+    var url=location.href.split('#')[0];
+    if(ua.indexOf('android')>-1){
+      var back=url+(url.indexOf('?')>-1?'&':'?')+'nochrome=1';   /* 크롬이 없으면 이 주소로 되돌아옴 */
+      location.href='intent://'+url.replace(/^https?:\/\//,'')+
+        '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(back)+';end';
+    }else if(ua.indexOf('iphone')>-1||ua.indexOf('ipad')>-1){
+      location.href=url.replace(/^https:\/\//,'googlechromes://').replace(/^http:\/\//,'googlechrome://');
+      setTimeout(function(){
+        if(!document.hidden)alert('크롬이 없으면 사파리 주소창에\n'+url+'\n을 직접 입력하세요.');
+      },1500);
+    }
+  }catch(e){}
+})();
+</script>
+
 <style>
 :root{--bg:#f6f7f5;--ink:#1c2626;--sub:#586868;--line:#d7dedb;--accent:#1d6b66;--accent2:#e9f1ef;--warn:#a93a26;--card:#fff}
 *{box-sizing:border-box}
@@ -31,13 +54,15 @@ button.stop{background:#f3e6e2;color:var(--warn)}
 .kara span{padding:3px 4px;border-radius:6px;transition:background .15s}
 .kara span.now{background:#ffe27a;font-weight:700}
 .kara span.done{color:#8a9797}
+.diag{margin-top:12px;font-size:17px;color:var(--sub)}
+.diag pre{white-space:pre-wrap;word-break:break-all;margin:8px 0 0;font-size:15px;line-height:1.5}
 small{color:var(--sub);font-size:18px}
 </style>
 </head>
 <body>
 <main>
   <h1>선희 음성 속도 테스트</h1>
-  <p class="ver">버전 5 · 쉼 조절 + 하이라이트 안정화</p>
+  <p class="ver">버전 7 · 크롬 열기 + 진단 기록</p>
   <p class="lead">문장 단위로 받아 오는 방식과 예전 방식(전체를 한 번에)의 첫 소리 시간을 비교합니다.</p>
 
   <section>
@@ -68,6 +93,7 @@ small{color:var(--sub);font-size:18px}
     </div>
     <div class="result" id="out">버튼을 눌러 시작하세요.</div>
     <div class="kara" id="kara"></div>
+    <details class="diag"><summary>진단 기록 (하이라이트가 안 될 때 이 화면을 캡처해 보내 주세요)</summary><pre id="dbg"></pre></details>
   </section>
 
   <small>이 파일은 index.html과 별개의 시험용입니다. 같은 사이트에 올리면 위에서 저장한 Key와 Region을 기존 앱과 함께 씁니다.</small>
@@ -75,6 +101,36 @@ small{color:var(--sub);font-size:18px}
 
 <script>
 const $=id=>document.getElementById(id);
+const PAGE_VER='v6';
+
+/* 진단 기록: 화면 맨 아래 「진단 기록」에 표시 */
+const dbgLines=[];
+function dbg(m){
+  const t=(performance.now()/1000).toFixed(2);
+  dbgLines.push('['+t+'] '+m); if(dbgLines.length>60)dbgLines.shift();
+  const el=$('dbg'); if(el)el.textContent=dbgLines.join('\n');
+}
+window.addEventListener('error',e=>dbg('오류: '+(e.message||e)));
+window.addEventListener('unhandledrejection',e=>dbg('오류: '+((e.reason&&e.reason.message)||e.reason)));
+
+/* 예전 index.html이 등록해 둔 서비스워커가 이 페이지의 옛 복사본을 돌려주는 일을 막는다 */
+(async function(){
+  try{
+    const KEY='tts_clean_'+PAGE_VER;
+    if(localStorage.getItem(KEY)==='1'){dbg('캐시 정리 이미 완료');return}
+    let n=0;
+    if(navigator.serviceWorker){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      n=regs.length; await Promise.all(regs.map(r=>r.unregister()));
+    }
+    if(window.caches){const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k)))}
+    localStorage.setItem(KEY,'1');
+    dbg('캐시 정리: 서비스워커 '+n+'개 제거');
+    if(n>0)location.reload();
+  }catch(e){dbg('캐시 정리 실패: '+e.message)}
+})();
+dbg('페이지 '+PAGE_VER+' 시작');
+dbg('브라우저: '+navigator.userAgent.replace(/^Mozilla\/5\.0 /,'').slice(0,90));
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const VOICE='ko-KR-SunHiNeural';
 const store={
@@ -179,8 +235,16 @@ function markKara(now){
   const k=$('kara');
   k.querySelectorAll('span').forEach(sp=>{
     const i=+sp.dataset.i;
-    sp.className=(now<0||i<now)?'done':(i===now?'now':'');
-    if(i===now)k.scrollTo({top:Math.max(0,sp.offsetTop-k.clientHeight/2+sp.offsetHeight/2),behavior:'smooth'});
+    const isNow=(i===now), isDone=(now<0||i<now);
+    sp.className=isDone?'done':(isNow?'now':'');
+    /* CSS가 적용되지 않아도 보이도록 색을 직접 지정 */
+    sp.style.background=isNow?'#ffe27a':'';
+    sp.style.color=isDone?'#8a9797':'';
+    sp.style.fontWeight=isNow?'700':'';
+    if(isNow){
+      try{k.scrollTo({top:Math.max(0,sp.offsetTop-k.clientHeight/2+sp.offsetHeight/2),behavior:'smooth'})}
+      catch(e){try{k.scrollTop=Math.max(0,sp.offsetTop-k.clientHeight/2)}catch(_){}}
+    }
   });
 }
 buildKara(splitText($('text').value));
@@ -240,10 +304,13 @@ async function speakFast(){
   const gap=Math.max(0,parseFloat($('gap').value)||0);
   const ac=await freshCtx();
   if(my!==run)return;
+  dbg('재생기 '+ac.state+' · 쉼 '+gap+'초');
   let chunks;
   try{settings();chunks=splitText($('text').value)}catch(e){show(e.message,true);return}
   if(!chunks.length){show('읽을 글을 입력해 주세요.',true);return}
   buildKara(chunks);
+  dbg('시작 · 문장 '+chunks.length+'개');
+  try{$('kara').scrollIntoView({block:'center',behavior:'smooth'})}catch(e){}
   show('첫 문장을 준비하는 중...');
 
   const jobs=[];
@@ -251,17 +318,19 @@ async function speakFast(){
   const starts=[]; let nextTime=0, late=0, first='', lastMarked=-2;
 
   /* 하이라이트: 재생 시계(tick)와 예약 타이머 두 가지로 표시 — 어느 한쪽이 멈춰도 따라감 */
-  const mark=idx=>{
+  const mark=(idx,src)=>{
     if(my!==run||idx<=lastMarked)return;
     if(lastMarked===-2)first=((performance.now()-t0)/1000).toFixed(1);
-    lastMarked=idx; markKara(idx);
+    lastMarked=idx;
+    try{markKara(idx)}catch(e){dbg('하이라이트 오류: '+e.message)}
+    dbg('표시 '+(idx+1)+'번 문장 ('+src+')');
     show(`<b>첫 소리까지 ${first}초</b><br>▶ ${idx+1} / ${chunks.length} 문장 재생 중<br><small>재생기: ${ac.state} · 예약 ${starts.length}/${chunks.length}</small>`);
   };
   const tick=()=>{
     if(my!==run)return;
     const now=ac.currentTime; let idx=-1;
     for(let j=0;j<starts.length;j++)if(now>=starts[j])idx=j;
-    if(idx>=0)mark(idx);
+    if(idx>=0)mark(idx,'시계');
     raf=requestAnimationFrame(tick);
   };
   raf=requestAnimationFrame(tick);
@@ -288,7 +357,8 @@ async function speakFast(){
     else when=nextTime;
     src.start(when,off,dur);
     sources.push(src);starts.push(when);
-    timers.push(setTimeout(()=>mark(i),Math.max(0,(when-ac.currentTime)*1000)));
+    dbg('예약 '+(i+1)+'/'+chunks.length+' 시작 '+when.toFixed(2)+' 길이 '+dur.toFixed(2)+(i>0&&late?' (늦음 '+late+')':''));
+    timers.push(setTimeout(()=>mark(i,'타이머'),Math.max(0,(when-ac.currentTime)*1000)));
     nextTime=when+dur+gap;
     /* 너무 앞서 받지 않도록 조절 (요금·요청 수 제한 보호) */
     while(my===run&&nextTime-ac.currentTime>10)await sleep(250);
