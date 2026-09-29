@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>선희 음성 속도 테스트</title>
+<style>
+:root{--bg:#f6f7f5;--ink:#1c2626;--sub:#586868;--line:#d7dedb;--accent:#1d6b66;--accent2:#e9f1ef;--warn:#a93a26;--card:#fff}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:21px/1.6 "Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:27px;line-height:1.3;margin:6px 0 4px}
+p.lead{margin:0 0 18px;color:var(--sub)}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+h2{font-size:23px;margin:0 0 10px}
+label{display:block;font-weight:700;margin:10px 0 4px}
+input,textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+textarea{min-height:190px;resize:vertical}
+input:focus,textarea:focus,button:focus-visible{outline:3px solid #7fb8b3;outline-offset:1px}
+.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+button{font:inherit;font-weight:700;min-height:56px;padding:10px 18px;border-radius:12px;border:0;cursor:pointer;flex:1 1 150px}
+button.main{background:var(--accent);color:#fff}
+button.sub{background:var(--accent2);color:var(--accent)}
+button.stop{background:#f3e6e2;color:var(--warn)}
+.result{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--accent2);min-height:52px}
+.result b{font-size:24px}
+.err{background:#f8e7e3;color:var(--warn)}
+small{color:var(--sub);font-size:18px}
+</style>
+</head>
+<body>
+<main>
+  <h1>선희 음성 속도 테스트</h1>
+  <p class="lead">문장 단위로 받아 오는 방식과 예전 방식(전체를 한 번에)의 첫 소리 시간을 비교합니다.</p>
+
+  <section>
+    <h2>음성 설정</h2>
+    <label for="key">Azure Speech Key</label>
+    <input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <label for="region">Region</label>
+    <input id="region" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="예: koreacentral">
+    <div class="row"><button class="sub" id="save">설정 저장</button></div>
+    <div class="result" id="saveMsg" hidden></div>
+  </section>
+
+  <section>
+    <h2>읽을 글</h2>
+    <textarea id="text">애호박볶음 조리법입니다. 먼저 애호박을 깨끗이 씻어 0.5센티미터 두께의 반달 모양으로 썹니다. 다진 마늘 0.3큰술과 대파 0.3대를 준비합니다. 팬에 식용유 1큰술을 두르고 중간 불에서 애호박을 2분 볶습니다. 재료의 색과 향이 달라지는 것을 보면서 서두르지 마세요. 처음에는 적힌 시간보다 눈으로 상태를 확인하는 것이 더 중요합니다. 다진 마늘과 대파를 넣고 30초 더 볶습니다. 마지막으로 참기름 0.5작은술을 두르고 불을 끕니다. 간은 한 번에 많이 하지 말고 조금씩 맛을 보며 맞추세요.</textarea>
+    <div class="row">
+      <button class="main" id="fast">🔊 문장씩 듣기 (새 방식)</button>
+      <button class="sub" id="whole">전체 한 번에 듣기 (예전 방식)</button>
+      <button class="stop" id="stop">■ 정지</button>
+    </div>
+    <div class="result" id="out">버튼을 눌러 시작하세요.</div>
+  </section>
+
+  <small>이 파일은 index.html과 별개의 시험용입니다. 같은 사이트에 올리면 위에서 저장한 Key와 Region을 기존 앱과 함께 씁니다.</small>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const VOICE='ko-KR-SunHiNeural';
+const store={
+  get:k=>{try{return localStorage.getItem(k)||''}catch(e){return ''}},
+  set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}}
+};
+$('key').value=store.get('mijin_azure_key');
+$('region').value=store.get('mijin_azure_region')||'koreacentral';
+
+$('save').onclick=()=>{
+  const k=$('key').value.trim(), r=$('region').value.trim()||'koreacentral';
+  if(k)store.set('mijin_azure_key',k);
+  store.set('mijin_azure_region',r);
+  const m=$('saveMsg'); m.hidden=false;
+  m.className='result'+(k?'':' err');
+  m.textContent=k?'이 휴대폰에 저장했습니다.':'Key를 입력해 주세요.';
+};
+
+const xmlEsc=s=>String(s).replace(/[<>&'"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c]));
+
+/* 문장 단위로 자르기: 첫 소리가 빨리 나도록 문장은 짧게 유지 */
+function splitText(t){
+  t=t.replace(/\r/g,'').replace(/[ \t]+/g,' ').trim();
+  const raw=t.split(/(?<=[.!?…。])\s+|\n+/).map(s=>s.trim()).filter(Boolean);
+  const out=[];
+  for(const s of raw){
+    if(s.length<=90){out.push(s);continue}
+    let cur='';
+    for(const p of s.split(/(?<=[,，;])\s*/)){
+      if(cur&&(cur+p).length>90){out.push(cur.trim());cur=p+' '}else cur+=p+' ';
+    }
+    if(cur.trim())out.push(cur.trim());
+  }
+  const merged=[];
+  for(const s of out){
+    const last=merged.length-1;
+    if(last>=0&&s.length<12&&(merged[last]+' '+s).length<90)merged[last]+=' '+s;
+    else merged.push(s);
+  }
+  return merged;
+}
+
+function settings(){
+  const key=store.get('mijin_azure_key'), region=store.get('mijin_azure_region')||'koreacentral';
+  if(!key)throw new Error('먼저 위에서 Azure Speech Key를 저장해 주세요.');
+  return {key,region};
+}
+
+async function synth(text,signal){
+  const {key,region}=settings();
+  const ssml=`<speak version="1.0" xml:lang="ko-KR"><voice name="${VOICE}"><prosody rate="-3%">${xmlEsc(text)}</prosody></voice></speak>`;
+  let res;
+  try{
+    res=await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`,{
+      method:'POST',signal,
+      headers:{
+        'Ocp-Apim-Subscription-Key':key,
+        'Content-Type':'application/ssml+xml',
+        'X-Microsoft-OutputFormat':'audio-16khz-32kbitrate-mono-mp3'
+      },
+      body:ssml
+    });
+  }catch(e){
+    if(e.name==='AbortError')throw e;
+    throw new Error('Azure에 연결하지 못했습니다. 인터넷과 Region 이름을 확인해 주세요.');
+  }
+  if(res.status===401||res.status===403)throw new Error('Key 또는 Region이 맞지 않습니다. (오류 '+res.status+')');
+  if(res.status===429)throw new Error('요청이 너무 많습니다. 잠시 뒤 다시 눌러 주세요.');
+  if(!res.ok)throw new Error('Azure 음성 오류 ('+res.status+')');
+  return URL.createObjectURL(await res.blob());
+}
+
+/* 폰에서 소리가 막히지 않도록, 버튼을 누른 순간 재생기를 한 번 열어 둠 */
+function silentWav(){
+  const b=new ArrayBuffer(46),v=new DataView(b);
+  const w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+  w(0,'RIFF');v.setUint32(4,38,true);w(8,'WAVE');w(12,'fmt ');
+  v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,8000,true);v.setUint32(28,8000,true);v.setUint16(32,1,true);v.setUint16(34,8,true);
+  w(36,'data');v.setUint32(40,2,true);v.setUint8(44,128);v.setUint8(45,128);
+  return URL.createObjectURL(new Blob([b],{type:'audio/wav'}));
+}
+const SILENT=silentWav();
+const player=new Audio();
+let run=0, ctrl=null, pendingRes=null;
+
+function show(html,isErr){const o=$('out');o.className='result'+(isErr?' err':'');o.innerHTML=html}
+
+function unlock(){player.src=SILENT;player.play().catch(()=>{})}
+
+function playUrl(url,onStart){
+  return new Promise(res=>{
+    pendingRes=res;
+    player.onended=()=>res();
+    player.onerror=()=>res();
+    player.src=url;
+    player.play().then(()=>{if(onStart)onStart()}).catch(()=>res());
+  });
+}
+
+function stopAll(){
+  run++;
+  if(ctrl){ctrl.abort();ctrl=null}
+  player.onended=null;player.onerror=null;
+  try{player.pause()}catch(e){}
+  if(pendingRes){const r=pendingRes;pendingRes=null;r()}
+}
+
+async function speakFast(){
+  stopAll(); unlock();
+  const my=++run; ctrl=new AbortController(); const sig=ctrl.signal;
+  const t0=performance.now();
+  let chunks;
+  try{settings();chunks=splitText($('text').value)}catch(e){show(e.message,true);return}
+  if(!chunks.length){show('읽을 글을 입력해 주세요.',true);return}
+  show('첫 문장을 준비하는 중...');
+  const jobs=[];
+  const start=i=>{if(i<chunks.length&&!jobs[i]){jobs[i]=synth(chunks[i],sig);jobs[i].catch(()=>{})}};
+  start(0);start(1);
+  let first='';
+  for(let i=0;i<chunks.length;i++){
+    let url;
+    try{url=await jobs[i]}catch(e){
+      if(my!==run)return;
+      show(e.message,true);stopAll();return;
+    }
+    if(my!==run){URL.revokeObjectURL(url);return}
+    start(i+2);
+    await playUrl(url,()=>{
+      if(i===0)first=((performance.now()-t0)/1000).toFixed(1);
+      if(my===run)show(`<b>첫 소리까지 ${first}초</b><br>▶ ${i+1} / ${chunks.length} 문장 재생 중`);
+    });
+    URL.revokeObjectURL(url);
+    if(my!==run)return;
+  }
+  show(`<b>첫 소리까지 ${first}초</b><br>✓ ${chunks.length}문장을 모두 읽었습니다.`);
+}
+
+async function speakWhole(){
+  stopAll(); unlock();
+  const my=++run; ctrl=new AbortController();
+  const t0=performance.now();
+  let text;
+  try{settings();text=$('text').value.trim()}catch(e){show(e.message,true);return}
+  if(!text){show('읽을 글을 입력해 주세요.',true);return}
+  show('전체 음성을 만드는 중... (예전 방식)');
+  let url;
+  try{url=await synth(text,ctrl.signal)}catch(e){
+    if(my!==run)return;
+    show(e.message,true);return;
+  }
+  if(my!==run){URL.revokeObjectURL(url);return}
+  await playUrl(url,()=>{
+    const s=((performance.now()-t0)/1000).toFixed(1);
+    if(my===run)show(`<b>예전 방식: 첫 소리까지 ${s}초</b><br>▶ 재생 중`);
+  });
+  URL.revokeObjectURL(url);
+}
+
+$('fast').onclick=speakFast;
+$('whole').onclick=speakWhole;
+$('stop').onclick=()=>{stopAll();show('멈췄습니다.')};
+</script>
+</body>
+</html>
