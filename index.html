@@ -5,24 +5,59 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>미진이 요리 도우미</title>
 <script>
-/* 앱 안 브라우저(카카오톡·네이버 등)에서 열리면 크롬으로 다시 연다 */
+/* 앱 안 브라우저(카카오톡·네이버 등)에서 열리면 크롬으로 다시 연다.
+   자동 이동을 폰이 막는 경우를 위해, 안 넘어가면 위에 「크롬으로 열기」 버튼을 보여 준다. */
 (function(){
   try{
     var ua=navigator.userAgent.toLowerCase();
-    var inApp=/kakaotalk|naver\(inapp|instagram|fban|fbav|fbios|daumapps|\bline\//.test(ua);
-    if(!inApp)return;
-    if(location.search.indexOf('nochrome=1')>-1)return;
-    var url=location.href.split('#')[0];
-    if(ua.indexOf('android')>-1){
-      var back=url+(url.indexOf('?')>-1?'&':'?')+'nochrome=1';
-      location.href='intent://'+url.replace(/^https?:\/\//,'')+
-        '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(back)+';end';
-    }else if(ua.indexOf('iphone')>-1||ua.indexOf('ipad')>-1){
-      location.href=url.replace(/^https:\/\//,'googlechromes://').replace(/^http:\/\//,'googlechrome://');
-      setTimeout(function(){
-        if(!document.hidden)alert('크롬이 없으면 사파리 주소창에\n'+url+'\n을 직접 입력하세요.');
-      },1500);
+    if(!/kakaotalk|naver\(inapp|instagram|fban|fbav|fbios|daumapps|\bline\//.test(ua))return;
+    var isAnd=ua.indexOf('android')>-1, isIos=/iphone|ipad/.test(ua), isKakao=ua.indexOf('kakaotalk')>-1;
+    var tried=location.search.indexOf('nochrome=1')>-1;
+    var url=location.href.split('#')[0].replace(/[?&]nochrome=1/,'').replace(/\?$/,'');
+
+    function openChrome(){
+      if(isAnd){
+        var back=url+(url.indexOf('?')>-1?'&':'?')+'nochrome=1';
+        location.href='intent://'+url.replace(/^https?:\/\//,'')+
+          '#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url='+encodeURIComponent(back)+';end';
+      }else if(isIos){
+        location.href=url.replace(/^https:\/\//,'googlechromes://').replace(/^http:\/\//,'googlechrome://');
+      }
     }
+    function openKakaoExternal(){location.href='kakaotalk://web/openExternal?url='+encodeURIComponent(url)}
+
+    if(!tried)openChrome();      /* 1) 자동으로 시도 */
+
+    function showBar(){          /* 2) 그래도 이 화면이 남아 있으면 버튼으로 안내 */
+      if(document.getElementById('chromeBar'))return;
+      var bar=document.createElement('div'); bar.id='chromeBar';
+      bar.style.cssText='position:fixed;left:0;right:0;top:0;z-index:99999;background:#fff3cd;color:#3b2f00;padding:12px 14px;font:19px/1.5 sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.3)';
+      var msg=document.createElement('div'); msg.style.cssText='font-weight:700;margin-bottom:8px';
+      msg.textContent='이 화면에서는 음성과 하이라이트가 잘 안 될 수 있습니다. 크롬으로 열어 주세요.';
+      bar.appendChild(msg);
+      function mk(label,fn,bg,fg){
+        var b=document.createElement('button'); b.type='button'; b.textContent=label;
+        b.style.cssText='font:inherit;font-weight:700;min-height:48px;margin:0 8px 8px 0;padding:6px 14px;border:0;border-radius:10px;background:'+bg+';color:'+fg;
+        b.onclick=function(){fn(b)}; bar.appendChild(b); return b;
+      }
+      mk('크롬으로 열기',openChrome,'#b85a34','#fff');
+      if(isKakao)mk('기본 브라우저로 열기',openKakaoExternal,'#fff','#3b2f00');
+      mk('주소 복사',function(b){
+        function done(){b.textContent='복사됨 ✓ 크롬에 붙여넣으세요'}
+        function fallback(){
+          var t=document.createElement('textarea'); t.value=url; document.body.appendChild(t); t.select();
+          try{document.execCommand('copy');done()}catch(e){prompt('주소를 복사해서 크롬에 붙여넣으세요',url)}
+          document.body.removeChild(t);
+        }
+        if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(url).then(done,fallback);
+        else fallback();
+      },'#fff','#3b2f00');
+      mk('닫기',function(){document.body.style.paddingTop='';bar.parentNode.removeChild(bar)},'transparent','#3b2f00');
+      document.body.appendChild(bar);
+      document.body.style.paddingTop=bar.offsetHeight+'px';
+    }
+    function start(){setTimeout(function(){if(!document.hidden)showBar()},tried?0:1500)}
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
   }catch(e){}
 })();
 </script>
